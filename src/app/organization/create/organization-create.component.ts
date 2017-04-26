@@ -1,7 +1,10 @@
-import { Component, ElementRef, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router, Params } from '@angular/router';
 import { FormGroup, Validators, FormBuilder } from '@angular/forms';
 import { OrganizationService } from '../common/organization.service';
 import { FormConstantsService } from '../../_services/form-constants.service';
+import { ImageUploaderService, ImageReaderResponse } from '../../_services/image-uploader.service';
+import { ImageDisplayService } from '../../_services/image-display.service';
 
 @Component({
   selector: 'my-create-organization',
@@ -10,14 +13,13 @@ import { FormConstantsService } from '../../_services/form-constants.service';
 })
 
 export class OrganizationCreateComponent implements OnInit {
-  public categories: String[];
+  public categories: {[key: string]: any};
   public countries: any[];
-  private editOrg = false; // TODO: Set editOrg on init. Need to know edit/add when saving changes
   public organization = this.initOrganization();
   public organizationForm: FormGroup;
   public formPlaceholder: {[key: string]: any} = {};
-  public shortDescMaxLength = 255;
-  public states: String[];
+  public descMaxLength = 255;
+  private logoData: ImageReaderResponse;
 
   // RegEx validators
   private einValidRegEx = /^[1-9]\d?-\d{7}$/;
@@ -30,54 +32,34 @@ export class OrganizationCreateComponent implements OnInit {
 
   constructor(public fb: FormBuilder,
               private organizationService: OrganizationService,
+              private route: ActivatedRoute,
+              private router: Router,
               private fc: FormConstantsService,
-              private el: ElementRef) { }
+              private imageDisplay: ImageDisplayService,
+              private imageUploader: ImageUploaderService
+              ) { }
 
   ngOnInit(): void {
-    this.getFormConstants();
 
-    if (this.editOrg) { // edit existing org
-      this.initForm();
-      // TODO: Pass variable to getOrganization() instead of hard-coded value
-      this.organizationService.getOrganization(2)
-          .subscribe(
-            res => {
-              this.organization = res;
-              this.editOrg = true;
-              this.initForm();
-            }, this.handleError
-          );
-    } else { // add new org
-      this.editOrg = null;
-      this.initForm();
-    }
-  }
-
-  private getFormConstants(): void {
     this.categories = this.fc.getCategories();
     this.countries = this.fc.getCountries();
-    this.states = this.fc.getStates();
-  }
 
-  private initForm(): void {
     this.organizationForm = this.fb.group({
       'photo': [this.organization.logo, []],
       'name': [this.organization.name || '', [Validators.required]],
       'website': [this.organization.website || '', [Validators.pattern(this.urlValidRegEx)]],
-      'email': [this.organization.email || '', [Validators.required, Validators.pattern(this.emailValidRegEx)]],
-      'phone': [this.organization.phone || '', [Validators.required]],
+      'email': [this.organization.email || '', [Validators.pattern(this.emailValidRegEx)]],
+      'phone': [this.organization.phone || '', []],
       'ein': [this.organization.ein || '', [Validators.pattern(this.einValidRegEx)]],
-      'category': [this.organization.category || '', [Validators.required]],
-      'address1': [this.organization.address1 || '', [Validators.required]],
+      'category': [this.organization.category || '', []],
+      'address1': [this.organization.address1 || '', []],
       'address2': [this.organization.address2 || '', []],
       'city': [this.organization.city || '', []],
       'state': [this.organization.state || '', []],
-      'country': [this.organization.country || '', [Validators.required]],
-      'zip': [this.organization.zip || '', [Validators.required, Validators.pattern(this.zipValidRegEx)]],
-      'shortDescription': [this.organization.briefDescription || '',
-        [Validators.required, Validators.maxLength(this.shortDescMaxLength)]
+      'country': [this.organization.country || '', []],
+      'zip': [this.organization.zip || '', [Validators.pattern(this.zipValidRegEx)]],
+      'description': [this.organization.description || '', [Validators.maxLength(this.descMaxLength)]
       ],
-      'longDescription': [this.organization.detailedDescription || '', [Validators.required]],
     });
   }
 
@@ -97,35 +79,47 @@ export class OrganizationCreateComponent implements OnInit {
       'state': '',
       'country': '',
       'zip': '',
-      'briefDescription': '',
-      'detailedDescription': ''
+      'description': ''
     };
   }
 
+  onUploadLogo(event): void {
+    this.imageUploader
+        .readImage(event)
+        .subscribe(res => {
+          this.organization.logo = res.base64Image;
+          this.logoData = res;
+        });
+  }
+
   onSubmit(): void {
-    if (this.editOrg) {
-    } else {
-      this.organizationService
-          .getOrganizations()
-          .toPromise()
-          .then(res => {
-
-            // TODO: Change this according to back-end feature changes
-            const results: Array<any> = res;
-            const body = this.organizationForm.value;
-            body.id = results[results.length - 1].id + 1;
-            body.description = body.shortDescription;
-            body.status = 'ACTIVE';
-
-            return this.organizationService
-                       .createOrganization(body)
-                       .toPromise();
-          })
-          .then(
-            res => console.log('Successfully created organization'),
-            err => this.handleError)
-          .catch(this.handleError);
-    }
+    this.organizationService
+      .getOrganizations()
+      .toPromise()
+      .then(res => {
+        const results: Array<any> = res;
+        const body = this.organizationForm.value;
+        return this.organizationService
+          .createOrganization(body)
+          .toPromise();
+      })
+      .then(
+          response => {
+             console.log('Successfully created organization');
+             console.log(response.json());
+             this.organization = response.json().organization;
+             return this.organization.id;
+        },
+        err => this.handleError)
+      .then(id => {
+        return this.organizationService
+          .saveLogo(id, this.logoData.formData)
+          .toPromise();
+      }, this.handleError)
+      .then(res => {
+        this.router.navigate(['/nonprofit/view/' + this.organization.id]);
+      }, this.handleError)
+      .catch(this.handleError);
   }
 
   private handleError(err): void {
