@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnInit } from '@angular/core';
+import { Component, ElementRef, OnInit, AfterViewChecked } from '@angular/core';
 import { FormGroup, Validators, FormBuilder } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser/';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -10,22 +10,25 @@ import { AuthService } from '../../auth.service';
 
 import { Organization } from '../common/organization';
 
+declare var Materialize: any;
+
 @Component({
   selector: 'my-edit-organization',
   templateUrl: 'organization-edit.component.html',
   styleUrls: ['organization-edit.component.css']
 })
 
-export class OrganizationEditComponent implements OnInit {
-  public categories: {[key: string]: any};
+export class OrganizationEditComponent implements OnInit, AfterViewChecked {
+  public categories: { [key: string]: any };
   public countries: any[];
   public organization = this.initOrganization();
   public organizationForm: FormGroup;
-  public formPlaceholder: {[key: string]: any} = {};
+  public formPlaceholder: { [key: string]: any } = {};
   public descMaxLength = 255;
   public states: String[];
   public loadedFile: any;
   public organizationId;
+  public logoValid = true;
 
   currentUserId: String;
   authSvc: AuthService;
@@ -81,16 +84,27 @@ export class OrganizationEditComponent implements OnInit {
         this.organizationService.getOrganization(this.organizationId).toPromise()
           .then(res => {
             this.organization = res;
+
             // NOTE: Logo retrieval is a temporary fix until form can be properly submitted with logo
             return this.organizationService.retrieveLogo(this.organizationId).toPromise();
           })
           .then(res => {
-            this.organization.logo = this.sanitizer.bypassSecurityTrustUrl('data:image/png;base64, ' + res.text());
+            const defaultAvatar = '../../../assets/default_avatar.png';
+            const logoText = res.text();
+            this.organization.logo = logoText ? this.sanitizer.bypassSecurityTrustUrl(`data:image/png;base64, ${logoText}`) : defaultAvatar;
             this.initForm();
           }, err => console.error('An error occurred', err)) // for demo purposes only
           .catch(err => console.error('An error occurred', err)); // for demo purposes only
       }
     });
+  }
+
+  ngAfterViewChecked(): void {
+    // Work around for bug in Materialize library, form labels overlap prefilled inputs
+    // See https://github.com/InfomediaLtd/angular2-materialize/issues/106
+    if (Materialize && Materialize.updateTextFields) {
+      Materialize.updateTextFields();
+    }
   }
 
   private getFormConstants(): void {
@@ -100,9 +114,8 @@ export class OrganizationEditComponent implements OnInit {
 
   private initForm(): void {
     this.organizationForm = this.fb.group({
-      'photo': [this.organization.logo, []],
       'name': [this.organization.name || '', [Validators.required]],
-      'website': [this.organization.website || '', [Validators.pattern(this.urlValidRegEx)]],
+      'websiteURL': [this.organization.websiteURL || '', [Validators.pattern(this.urlValidRegEx)]],
       'contactEmail': [this.organization.contactEmail || '', [Validators.pattern(this.emailValidRegEx)]],
       'contactName': [this.organization.contactName || '', []],
       'contactPhone': [this.organization.contactPhone || '', []],
@@ -121,11 +134,24 @@ export class OrganizationEditComponent implements OnInit {
   }
 
   onUploadLogo(fileInput: any): void {
-    this.imageUploader.uploadImage(fileInput,
-       this.organizationId,
-       this.organizationService.saveLogo.bind(this.organizationService))
-       .subscribe(res => {this.organization.logo = res.url; },
-                  err => {console.error(err, 'An error occurred'); } );
+    // Make sure there are files before doing the upload
+    if (fileInput.target.files && fileInput.target.files.length) {
+      // Make sure the file is under 1MB
+      if (fileInput.target.files[0].size < 1048576) {
+        this.logoValid = true;
+        this.imageUploader.uploadImage(fileInput,
+          this.organizationId,
+          this.organizationService.saveLogo.bind(this.organizationService))
+          .subscribe(res => {
+            if (res.url) {
+              this.organization.logo = res.url;
+            }
+          },
+          err => { console.error(err, 'An error occurred'); });
+      } else {
+        this.logoValid = false;
+      }
+    }
   }
 
   onSubmit(): void {
@@ -141,7 +167,7 @@ export class OrganizationEditComponent implements OnInit {
     return {
       'logo': '',
       'name': '',
-      'website': '',
+      'websiteURL': '',
       'contactEmail': '',
       'contactName': '',
       'contactPhone': '',
