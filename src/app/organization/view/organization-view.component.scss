@@ -1,70 +1,38 @@
-@import "../../variables";
-
-
-.sidebar .section .section-body {
-  padding: 0px;
-  border: none;
-
-  ul {
-    margin: 0;
-    li {
-      border: solid $line-sep-width $line-sep-color;
-      margin-top: 0.5em;
-      margin-bottom: 1em;
-      .card {
-        box-shadow: none;
-        margin-top: 0;
-
-        .card-header {
-          background-color: $sec-bg-color;
-          h5 {
-            line-height: 40px;
-            padding-left: 20px;
-          }
-        }
-        .card-content {
-          background-color: $section-bg-color;
-        }
-      }
-    }
-  }
-}
-
+@import "../../_style/app.theme";
 
 .subtitle {
   font-style: italic;
+  a:hover {
+    text-decoration: underline #84c44c;  
+    }
 }
-.action-btns {
-  text-align: center;
-  padding-top: 1em;
-  padding-bottom: 1em;
+
+.proj-name{
+  h5:hover{
+     text-decoration: underline #84c44c;  
+  }
 }
-.single-info {
-  h4 {
-    font-size: 1.15em;
+
+.user-name{
+  span:hover{
+  text-decoration: underline #84c44c;
+  cursor: pointer;
+  }
+}
+.subtitle {
+  width: 100%;
+  padding-left: 2em;
+  .names {
+    font-size: 1.5em;
     font-weight: bold;
   }
-  .left-col {
-    border-right: solid $line-sep-width $line-sep-color;
-  }
-
-  .right-col {
-    border-left: solid $line-sep-width $line-sep-color;
-    margin-left: - $line-sep-width;
-  }
-
-  .info-avatar {
-    text-align: center;
-    img { 
-      width: 100%;
+  .metainfo {
+    padding-top: 1em;
+    padding-bottom: 1em;
+    p {
+      margin-top: 0;
+      margin-bottom: 0;
+      line-height: 2em;
     }
   }
-  .info-description {
-    border: solid $line-sep-width $line-sep-color;
-    padding: 25px;
-
-  }
-  
 }
-
-

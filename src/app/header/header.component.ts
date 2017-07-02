@@ -1,4 +1,4 @@
-import { Component, DoCheck } from '@angular/core';
+import { Component, DoCheck, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from './../auth.service';
 import { OrganizationService } from '../organization/common/organization.service';
@@ -12,20 +12,49 @@ import { Organization } from '../organization/common/organization';
   styleUrls: [ 'header.component.scss' ]
 })
 
-export class HeaderComponent implements DoCheck {
+export class HeaderComponent implements DoCheck, OnInit {
+
   currentUserId: string;
   organizationId: string;
   atHome = false;
-  constructor(private router: Router, public authSvc: AuthService, private organizationService: OrganizationService) {
 
+  constructor(private router: Router, public authSvc: AuthService, private organizationService: OrganizationService) {
+  }
+
+  ngOnInit(): void {
+    // Subscribe to updates to the organization
+    this.organizationService.organizationLinkedSource$.subscribe(res => {
+      this.setOrganizationId(res);
+    });
+  }
+  loadProjects(): void {
+    // This URL is used as dummy URL
+    this.router.navigate(['/project/list', 'reload'], {skipLocationChange: true});
+    setTimeout(() => this.router.navigate(['/project/list/projects']));
+  }
+  loadVolunteers(): void {
+    // This URL is used as dummy URL
+    this.router.navigate(['/user/list', { from: 'reload' }], {skipLocationChange: true});
+    setTimeout(() => this.router.navigate(['/user/list']));
+  }
+
+  loadOrganizations(): void {
+    // This URL is used as dummy URL
+    this.router.navigate(['/organization/list', 'reload'], {skipLocationChange: true});
+    setTimeout(() => this.router.navigate(['/organization/list/organizations']));
+  }
+
+  private setOrganizationId(organizationId: string): void {
+    this.organizationId = organizationId;
+    localStorage.setItem('userOrganizationId', organizationId);
   }
 
   // control nav style by changing the class name
   isAtHome() {
     if (this.router.url === '/' || this.router.url === '/#!') {
-      return true;
+      return 'at-home';
     }
-    return false;
+    return 'off-home';
   }
 
   ngDoCheck() {
@@ -40,8 +69,7 @@ export class HeaderComponent implements DoCheck {
             // otherwise, data is undefined
             organization = res[0];
             if (organization !== undefined) {
-              this.organizationId = organization.id.toString();
-              localStorage.setItem('userOrganizationId', organization.id.toString());
+              this.setOrganizationId(organization.id.toString());
             }
           },
           error => console.log(error)

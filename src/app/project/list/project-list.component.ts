@@ -1,140 +1,242 @@
-import {Component, OnInit, OnDestroy} from '@angular/core';
+import {AfterViewChecked, Component, OnInit, OnDestroy} from '@angular/core';
+import {FormArray, FormControl, FormGroup} from '@angular/forms';
 import {Router, ActivatedRoute} from '@angular/router';
-import { Subscription } from 'rxjs/Rx';
+import {Subscription} from 'rxjs/Rx';
 
 import {Project} from '../common/project';
 import {ProjectService} from '../common/project.service';
-import { AuthService } from '../../auth.service';
-import { OrganizationService } from '../../organization/common/organization.service';
-import { User } from '../../user/common/user';
+import {AuthService} from '../../auth.service';
+import {OrganizationService} from '../../organization/common/organization.service';
+import {SkillService} from '../../skill/common/skill.service';
+import {User} from '../../user/common/user';
+import {DataService} from '../../_services/data.service';
 
-import { ImageDisplayService } from '../../_services/image-display.service';
+declare const Materialize: any;
 
 @Component({
   selector: 'my-projects',
   templateUrl: 'project-list.component.html',
   styleUrls: ['project-list.component.scss']
 })
-export class ProjectListComponent implements OnInit, OnDestroy {
 
-  p = 0;
+export class ProjectListComponent implements AfterViewChecked, OnInit, OnDestroy {
+
+  roles = [{
+    name: 'Developer',
+    value: 'D'
+  }, {
+    name: 'UI/UX Designer',
+    value: 'U'
+  }, {
+    name: 'Tester',
+    value: 'Q'
+  }, {
+    name: 'Architect',
+    value: 'A'
+  }, {
+    name: 'Build & Release Engineer',
+    value: 'E'
+  }, {
+    name: 'Business Analyst',
+    value: 'B'
+  }, {
+    name: 'Project Manager',
+    value: 'P'
+  }, {
+    name: 'Sales & Marketing',
+    value: 'S'
+  }];
+
+
+  rolesArray = new FormArray([
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false)
+  ]);
+
+  skills: any[];
+  skillsShowed = [];
+  skillsArray = new FormArray([]);
+  filterForm = new FormGroup({
+    keyword: new FormControl(''),
+    roles: this.rolesArray,
+    skills: this.skillsArray
+  });
+
+  p = 1; // Holds page number
   projects: Project[];
+  bookmarkedProjects: Project[];
+  appliedProjects: Project[];
+  activeProjects: Project[];
+  closedProjects: Project[];
+  temp: any[];
   users: User[];
   selectedProject: Project;
-  pagedItems: any[]; // paged items
-  pager: any = {}; // pager Object
+  totalItems = 0;
+  projectsCache: any[];
   projectsSubscription: Subscription;
   userId: number;
   orgId: number;
+  projId: number;
   from: string;
-  userProjectStatus = 'A';
+  isVolunteer = false;
+  isNonprofit = false;
+  defaultImage = '../../assets/default_image.png';
 
+  constructor(private projectService: ProjectService,
+              private organizationService: OrganizationService,
+              private dataService: DataService,
+              private router: Router,
+              public auth: AuthService,
+              private route: ActivatedRoute,
+              private skillService: SkillService) {
+  }
 
-  constructor(
-
-     private projectService: ProjectService,
-     private organizationService: OrganizationService,
-     private router: Router,
-     private auth: AuthService,
-     private route: ActivatedRoute,
-     private idService: ImageDisplayService
-  ) { }
+  ngAfterViewChecked(): void {
+    // Work around for bug in Materialize library, form labels overlap prefilled inputs
+    // See https://github.com/InfomediaLtd/angular2-materialize/issues/106
+    if (Materialize && Materialize.updateTextFields) {
+      Materialize.updateTextFields();
+    }
+  }
 
   ngOnInit(): void {
-        const id = this.auth.getCurrentUserId();
-        this.userId = +id;
-        this.route.params.subscribe(
-          params => this.from = params['from']);
-        this.getProjects();
-  }
+    this.userId = +this.auth.getCurrentUserId();
 
-   private getProjects(): void {
-/* TODO the logic to be integrated
-        if ((!this.auth.authenticated()) || (this.from === 'opportunities')) {
-                 this.projectsSubscription = this.projectService.getProjects().subscribe(
-                      res => this.projects = res,
-                      error => console.log(error));
-
-    }  else if ((this.auth.isVolunteer()) && (this.from === 'myProjects')) {
-                  this.projectsSubscription = this.projectService.getProjectByUser(this.userId, this.userProjectStatus).subscribe(
-                       res   => this.projects = JSON.parse(JSON.parse(JSON.stringify(res))._body),
-                       error => console.log(error));
-
-    }  else if ((this.auth.isOrganization()) && (this.from === 'myProjects')) {
-                  this.organizationService.getUserOrganization(this.userId).subscribe(
-                    response =>  {
-                             this.users = JSON.parse(JSON.parse(JSON.stringify(response))._body);
-                             this.users.forEach(
-                               user => {
-                                        this.orgId = user.id;
-                                        this.projectsSubscription = this.projectService.getProjectByOrg(this.orgId).subscribe(
-                                               res => this.projects = JSON.parse(JSON.parse(JSON.stringify(res))._body),
-                                               error => console.log(error));
-                                      });
-                            },
-                    error => console.log(error));
-                   }
-}
-*/
-
-     this.projectsSubscription = this.projectService
-                                     .getProjects()
-                                     .subscribe(
-                                     res => {
-                                       this.projects = res;
-                                       res.forEach((e: Project) => {
-                                        this.idService.displayImage(e.id,
-                                          this.projectService.retrieveImage.bind(this.projectService))
-                                          .subscribe(image => {
-                                            e.image = image.url;
-                                          });
-                                       });
-                                     },
-                                       error => console.log(error)
-                                     );
-
-    /* TODO For logged in user, if they click Opportunities, they should see full list of project
-       If they click My Projects, they should see filtered list of projecct for themselves.
-
-    if(!this.auth.authenticated()){
-         this.projectsSubscription = this.projectService.getProjects().subscribe(
-              res => {
-                this.projects = JSON.parse(JSON.parse(JSON.stringify(res))._body);
-                this.setPage(1); // initialize to page 1
-              },
-              error => console.log(error));
+    this.route.params.subscribe(
+      params => {
+        this.rolesArray.controls.forEach(roleControl => {
+          return roleControl.setValue(false);
+        });
+        this.skillsArray.controls.forEach(skillControl => {
+          return skillControl.setValue(false);
+        });
+        this.from = params['from'];
+        if (this.from === 'reload') {
+            this.p = 1;
+            this.filterForm.controls.keyword.setValue('');
+            this.filterForm.controls.roles =  this.rolesArray;
+            this.filterForm.controls.skills = this.skillsArray;
         }
+        this.getProjects(this.p);
+      });
 
-    else if (this.auth.isVolunteer()){
-      this.projectsSubscription = this.projectService.getProjectByUser(this.userId).subscribe(
-           res => {
-             this.projects = JSON.parse(JSON.parse(JSON.stringify(res))._body);
-             this.setPage(1); // initialize to page 1
-           },
-           error => console.log(error));
-    }
-    else if (this.auth.isOrganization()){
-      this.projectsSubscription = this.projectService.getProjectByOrg(2).subscribe(
-           res => {
-             this.projects = JSON.parse(JSON.parse(JSON.stringify(res))._body);
-             this.setPage(1); // initialize to page 1
-           },
-           error => console.log(error))
-    }
-    */
+    this.route.queryParams.subscribe(params => {
+      if (params.keyword) {
+        this.filterForm.controls.keyword.setValue(params.keyword);
+      }
+    });
+
+    this.getSkills();
+
+    // Watch for changes to the form and update the list
+    this.filterForm.valueChanges.debounceTime(500).subscribe((value) => {
+      this.getProjects(this.p);
+    });
   }
 
-  getProjectsByKeyword(keyword: string) {
-    keyword = keyword.trim();
-    if (!keyword) {
-      return;
-    }
-    this.projectService
-        .getProjectsByKeyword(keyword)
+  getProjects(page: number): void {
+    // Issue#300 - resetting form before reloading page to display all items
+    // this.filterForm.reset();
+    window.scrollTo(0, 0);
+    if (this.from === 'projects') { // Projects Menu Item
+
+      const skills = this.filterForm.value.skills;
+      const skillsParam = [];
+
+      if (skills) {
+        for (let i = 0; i < skills.length; i++) {
+          if (skills[i]) {
+            skillsParam.push(this.skills[i].id.toString());
+          }
+        }
+      }
+      this.filterForm.value.keyword = this.filterForm.value.keyword.trim();
+      this.projectsSubscription = this.projectService.searchProjects(
+        this.filterForm.value.keyword, skillsParam, 'A', null, page, 10)
         .subscribe(
-          res => this.projects = res,
+          res => {
+            this.projects = res.data;
+            this.totalItems = res.totalItems;
+            this.projectsCache = this.projects.slice(0);
+            res.data.forEach((e: Project) => {
+              this.skillService.getSkillsByProject(e.id).subscribe(
+                result => {
+                  e.skills = result;
+                });
+            });
+          },
           error => console.log(error)
         );
+
+    } else if ((this.from === 'myProjects') && (this.auth.isVolunteer())) { // Volunteer user: My Projects
+      this.isVolunteer = true;
+      this.projectsSubscription = this.projectService.getProjectByUser(this.userId, 'B').subscribe(
+        res => this.bookmarkedProjects = JSON.parse(JSON.parse(JSON.stringify(res))._body),
+        error => console.log(error));
+      this.projectsSubscription = this.projectService.getProjectByUser(this.userId, 'A').subscribe(
+        res => this.appliedProjects = JSON.parse(JSON.parse(JSON.stringify(res))._body),
+        error => console.log(error));
+
+    } else if ((this.from === 'myProjects') && (this.auth.isOrganization())) { // Nonprofit user: My Projects
+      this.isNonprofit = true;
+      this.organizationService.getUserOrganization(this.userId).subscribe(
+        response => {
+          this.orgId = response.reduce((acc) => acc).id;
+          // Returns project of any status: 'A' and' 'C'
+          this.projectsSubscription = this.projectService.getProjectByOrg(this.orgId, null).subscribe(
+            res => {
+              this.projects = res.json();
+              this.totalItems = this.projects.length;
+              this.projects.forEach((e: Project) => {
+                this.skillService.getSkillsByProject(e.id).subscribe(
+                  result => {
+                    e.skills = result;
+                  });
+              });
+              this.activeProjects = this.projects.filter((project) => project.status === 'A');
+              this.closedProjects = this.projects.filter((project) => project.status === 'C');
+            },
+            error => console.log(error)
+          );
+        },
+        error => console.log(error)
+      );
+    }
+    ;
+  }
+
+  getSkills(): void {
+    this.skillService.getSkills().subscribe(res => {
+        this.skills = res.map(skill => {
+          return {name: skill.skillName, checked: false, id: skill.id};
+        });
+        this.showSkills();
+      },
+      error => console.error(error)
+    );
+  }
+
+  showSkills(): void {
+    let addedSkills;
+    if (this.skillsShowed.length < this.skills.length) {
+      if (!this.skillsShowed.length) {
+        addedSkills = this.skills.slice(0, 10);
+      } else {
+        addedSkills = this.skills
+          .filter(i => !this.skillsShowed.includes(i));
+        addedSkills = addedSkills.filter((i, index) => index < 10);
+      }
+      for (const addedSkill of addedSkills) {
+        this.skillsShowed.push(addedSkill);
+        this.skillsArray.push(new FormControl(false));
+      }
+    }
   }
 
   onSelect(project: Project): void {
@@ -152,30 +254,32 @@ export class ProjectListComponent implements OnInit, OnDestroy {
     const project = new Project(8, name, 1, 'description', 'logo.png', 'city', 'USA', '55311', 'Teens Give');
 
     this.projectService
-        .add(project)
-        .subscribe(
-          response => {
-            this.getProjects();
-            this.router.navigate(['/nonprofits']);
-          },
-          error => console.log(error)
-        );
+      .add(project)
+      .subscribe(
+        response => {
+          this.getProjects(this.p);
+          this.router.navigate(['/organization/list']);
+        },
+        error => console.log(error)
+      );
   }
 
   delete(project: Project): void {
     this.projectService
-        .delete(project.id)
-        .subscribe(
-          response => { // An error occurred SyntaxError: Unexpected end of JSON input
-            this.getProjects();
-            this.router.navigate(['/nonprofits']);
-          },
-          error => console.log(error)
-        );
+      .delete(project.id)
+      .subscribe(
+        response => { // An error occurred SyntaxError: Unexpected end of JSON input
+          this.getProjects(this.p);
+          this.router.navigate(['/organization/list']);
+        },
+        error => console.log(error)
+      );
   }
 
   ngOnDestroy() {
-    if (this.projectsSubscription) { this.projectsSubscription.unsubscribe(); }
+    if (this.projectsSubscription) {
+      this.projectsSubscription.unsubscribe();
+    }
   }
 
 }

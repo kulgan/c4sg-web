@@ -1,0 +1,25 @@
+@import "../../_style/app.theme";
+
+#left-col{
+  .single-info{
+    .info-avatar{
+      border-radius: 50%;
+
+      img{
+        max-width: none;
+      }
+    }
+  }
+}
+
+ .skills-margin{
+   margin-top: 5.5%;
+ }
+
+ .second-column{
+   margin: 0;
+ }
+
+ .user-edit-dropdown{
+   margin-top: -6px;
+ }

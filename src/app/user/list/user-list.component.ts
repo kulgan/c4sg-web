@@ -1,10 +1,12 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Router } from '@angular/router';
-import { Subscription } from 'rxjs/Rx';
+import {Component, OnInit, OnDestroy} from '@angular/core';
+import {FormArray, FormControl, FormGroup} from '@angular/forms';
+import {Router, ActivatedRoute} from '@angular/router';
+import {Subscription} from 'rxjs/Rx';
 
-import { User } from '../common/user';
-import { UserService } from '../common/user.service';
-import { AuthService } from '../../auth.service';
+import {User} from '../common/user';
+import {UserService} from '../common/user.service';
+import {SkillService} from '../../skill/common/skill.service';
+import {AuthService} from '../../auth.service';
 
 @Component({
   selector: 'my-userlist',
@@ -14,42 +16,137 @@ import { AuthService } from '../../auth.service';
 })
 
 export class UserListComponent implements OnInit, OnDestroy {
-  totalItems = 0;
-  p = 0;
-  keywords: any;
-  pagedItems: any[]; // paged items
-  pager: any = {}; // pager Object
-  selectedUser: User;
+
+  roles = [{
+    name: 'Developer',
+    value: 'D'
+  }, {
+    name: 'UI/UX Designer',
+    value: 'U'
+  }, {
+    name: 'Tester',
+    value: 'Q'
+  }, {
+    name: 'Architect',
+    value: 'A'
+  }, {
+    name: 'Build & Release Engineer',
+    value: 'E'
+  }, {
+    name: 'Business Analyst',
+    value: 'B'
+  }, {
+    name: 'Project Manager',
+    value: 'P'
+  }, {
+    name: 'Sales & Marketing',
+    value: 'S'
+  }];
+
+
+  rolesArray = new FormArray([
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false)
+  ]);
+
   skills: any[];
+  skillsShowed = [];
+  skillsArray = new FormArray([]);
+  filterForm = new FormGroup({
+    keyword: new FormControl(''),
+    roles: this.rolesArray,
+    skills: this.skillsArray
+  });
+
+  totalItems = 0;
+  p = 1;
+  keyword: string;
+  keywords: any;
+  selectedUser: User;
   skillsFilter: string[] = [];
-  titles: any[];
-  titlesFilter: string[] = [];
   usersCache: any[];
   users: User[];
   usersSubscription: Subscription;
+  defaultAvatar = '../../assets/default_avatar.png';
 
   constructor(private userService: UserService,
-              private router: Router,
-              private auth: AuthService) {
-
+    private router: Router,
+    private skillService: SkillService,
+    private auth: AuthService,
+    private route: ActivatedRoute) {
   }
 
   ngOnInit(): void {
-    this.getUsers(1);
+    this.route.params.subscribe(
+      params => {
+        this.rolesArray.controls.forEach(roleControl => {
+          return roleControl.setValue(false);
+        });
+        this.skillsArray.controls.forEach(skillControl => {
+              return skillControl.setValue(false);
+            });
+        if (params['from'] === 'reload') {
+            this.p = 1;
+            this.filterForm.controls.keyword.setValue('');
+            this.filterForm.controls.skills = this.skillsArray;
+        }
+      });
+    this.getUsers(this.p);
     this.getSkills();
-    this.getTitles();
     this.getKeywords();
+
+    // Watch for changes to the form and update the list
+    this.filterForm.valueChanges.debounceTime(500).subscribe((value) => {
+      this.getUsers(this.p);
+    });
   }
 
-  // takes in array of strings and returns array of objects
-  private createCheckBoxObj(arr) {
-    return arr.map(
-      val => {
-        return {
-          name: val,
-          checked: false
-        };
+  public getUsers(page: number): void {
+    const skills = this.filterForm.value.skills;
+    const skillsParam = [];
+    window.scrollTo(0, 0);
+    if (skills) {
+      for (let i = 0; i < skills.length; i++) {
+        if (skills[i]) {
+          skillsParam.push(this.skills[i].id.toString());
+        }
       }
+    }
+
+    this.filterForm.value.keyword = this.filterForm.value.keyword.trim();
+    this.usersSubscription = this.userService.searchUsers(
+      this.filterForm.value.keyword, skillsParam, 'A', 'V', 'Y', page, 10)
+      .subscribe(
+        res => {
+          // the service returns a JSON object consist of the array of pageable data
+          this.users = res.data;
+          this.totalItems = res.totalItems;
+          this.usersCache = this.users.slice(0);
+          res.data.forEach((e: User) => {
+            this.skillService.getSkillsForUser(e.id).subscribe(
+              result => {
+                e.skills = result;
+              });
+          });
+        },
+        error => console.error(error)
+      );
+  }
+
+  getSkills(): void {
+    this.skillService.getSkills().subscribe(res => {
+        this.skills = res.map(skill => {
+          return {name: skill.skillName, checked: false, id: skill.id};
+        });
+        this.showSkills();
+      },
+      error => console.error(error)
     );
   }
 
@@ -70,104 +167,37 @@ export class UserListComponent implements OnInit, OnDestroy {
     ];
   }
 
-  private getSkills(): void {
-    // TODO: wire this up with userService when getSkills is available
-    // this.skills = this.createCheckBoxObj(['skill 1', 'skill 2', 'skill 3', 'skill 4']);
-    this.userService.getSkills().subscribe(res => {
-      console.log(res);
-      this.skills  = res.map(skill => {
-        return {name: skill.skillName, checked: false}; });
-    },
-      error => console.error(error)
+  private createCheckBoxObj(arr) {
+    return arr.map(
+      val => {
+        return {
+          name: val,
+          checked: false
+        };
+      }
     );
   }
 
-  private getTitles(): void {
-    // TODO: wire this up with userService when getTitles is available
-    this.titles = this.createCheckBoxObj(['title 1', 'title 2', 'title 3', 'title 4']);
-  }
-
-
-  public getUsers(page: number): void {
-    this.usersSubscription = this.userService.getUsers(page)
-                                 .subscribe(
-                                   res => {
-                                     // the called service returns a JSON object
-                                     // consist of the array of pageable data
-                                     // and the total number of data rows
-                                     this.users = res.data;
-                                     this.totalItems = res.totalItems;
-                                     this.usersCache = this.users.slice(0);
-                                   },
-                                   error => console.error(error)
-                                 );
-  }
-
-  // filter this.users based on search option checkboxes
-  private filterUsers(): void {
-    // TODO
-    // user this.skillsFilter and this.titlesFilter to select from this.users
-    // for example,
-    this.users.filter(selectUser);
-
-    function selectUser(user): boolean {
-      let searching = true;
-      let idx = 0;
-
-      // select everything
-      if (this.titlesFilter.length === 0 && this.skillsFilter.length === 0) {
-        return true;
+  showSkills(): void {
+    let addedSkills;
+    if (this.skillsShowed.length < this.skills.length) {
+      if (!this.skillsShowed.length) {
+        addedSkills = this.skills.slice(0, 10);
+      } else {
+        addedSkills = this.skills
+          .filter(i => !this.skillsShowed.includes(i));
+        addedSkills = addedSkills.filter((i, index) => index < 10);
       }
-
-      // title match
-      if (this.titlesFilter.indexOf(user.title) !== -1) {
-        return true;
-      }
-
-      // skills match (assumes skills array)
-      while (searching) {
-        const found = this.user.skills.indexOf(this.skillsFilter[idx]) !== -1;
-        if (found) {
-          searching = false;
-          return true;
-        }
-
-        idx += 1;
+      for (const addedSkill of addedSkills) {
+        this.skillsShowed.push(addedSkill);
+        this.skillsArray.push(new FormControl(false));
       }
     }
   }
 
-  getUsersByKeyword(userName: string, firstName: string, lastname: string): void {
-    if (userName || firstName || lastname) {
-      // TODO: Verify this works when REST API finished
-      this.userService
-          .getUsersByKeyword(userName, firstName, lastname)
-          .subscribe(
-            res => this.users = res,
-            error => console.error(error)
-          );
-    }
-  }
-
-  // takes in array index and category array (title / skill)
-  onCheck(id: number, category: string): void {
-    this[category][id].checked = !this[category][id].checked;
-
-    if (this.titlesFilter.length > 0 || this.skillsFilter.length > 0) { // if
-      this.filterUsers();
-    } else {
-      this.resetUsers();
-    }
-  }
-
-  // selection callback
   onSelect(user: User): void {
     this.selectedUser = user;
     this.router.navigate(['user/view', user.id]);
-  }
-
-  resetUsers(): void {
-    this.users = this.usersCache.slice(0);
   }
 
   ngOnDestroy() {

@@ -1,9 +1,11 @@
 import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { FormArray, FormControl, FormGroup } from '@angular/forms';
+import { Router, ActivatedRoute } from '@angular/router';
 import { Organization } from '../common/organization';
 import { OrganizationService } from '../common/organization.service';
-
-import { ImageDisplayService } from '../../_services/image-display.service';
+import { Project } from '../../project/common/project';
+import { ProjectService } from '../../project/common/project.service';
+import { Subscription} from 'rxjs/Rx';
 
 declare const $: Function;
 
@@ -14,23 +16,71 @@ declare const $: Function;
 })
 
 export class OrganizationListComponent implements OnInit, AfterViewInit {
+  categories = [{
+    name: 'Nonprofit',
+    value: 'N'
+  }, {
+    name: 'Open Source',
+    value: 'O'
+  }, {
+    name: 'Social Enterprise',
+    value: 'S'
+  }, {
+    name: 'Team Project',
+    value: 'T'
+  }];
 
-  p = 0;
+
+  categoriesArray = new FormArray([
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false),
+    new FormControl(false)
+  ]);
+
+  filterForm = new FormGroup({
+    keyword: new FormControl(''),
+    hasProjects: new FormControl(false),
+    categories: this.categoriesArray
+  });
+  p = 1; // Holds page number
   organizations: Object[];
   selectedOrganization?: Organization;
-
-  // array of all items to be paged
-  //   organizations: any[];
-
+  projects: Project[];
+  from: string;
+  defaultLogo = '../../assets/default_image.png';
+  organizationsSubscription: Subscription;
+  totalItems = 0;
+  organizationsCache: any[];
 
   constructor(
-    private idService: ImageDisplayService,
     private organizationService: OrganizationService,
-              private router: Router) {
+    private projectService: ProjectService,
+    private route: ActivatedRoute,
+    private router: Router) {
   }
 
   ngOnInit(): void {
-    this.getOrganizations();
+
+    this.route.params.subscribe(
+      params => {
+        this.categoriesArray.controls.forEach(categoryControl => {
+          return categoryControl.setValue(false);
+        });
+        this.from = params['from'];
+        if (this.from === 'reload') {
+            this.p = 1;
+            this.filterForm.controls.keyword.setValue('');
+            this.filterForm.controls.hasProjects.setValue(false);
+            this.filterForm.controls.categories =  this.categoriesArray;
+        }
+        this.getOrganizations(this.p);
+      });
+
+    // Watch for changes to the form and update the list
+    this.filterForm.valueChanges.debounceTime(500).subscribe((value) => {
+      this.getOrganizations(this.p);
+    });
   }
 
   ngAfterViewInit(): void {
@@ -42,35 +92,53 @@ export class OrganizationListComponent implements OnInit, AfterViewInit {
       });
   }
 
-  getOrganizations() {
-    this.organizationService.getOrganizations()
-        .subscribe( res => {
-            this.organizations = res;
-            res.forEach((o: Organization) => {
-            this.idService.displayImage(o.id,
-              this.organizationService.retrieveLogo.bind(this.organizationService))
-              .subscribe(logo => {
-                o.logo = logo.url;
-              });
-            });
-          },
-          error => console.log(error)
-        );
-  }
-
-  getOrganizationsByKeyword(keyword: string) {
-    keyword = keyword.trim();
-
-    if (!keyword) {
-      return;
+  getOrganizations(page: number): void {
+    const categories = this.filterForm.value.categories;
+    const categoriesParam = [];
+    window.scrollTo(0, 0);
+    if (categories) {
+      for (let i = 0; i < categories.length; i++) {
+        if (categories[i]) {
+          categoriesParam.push(this.categories[i].value);
+        }
+      }
     }
 
-    this.organizationService
-        .getOrganizationsByKeyword(keyword)
-        .subscribe(
-          res => this.organizations = res,
-          error => console.log(error)
-        );
+    if (this.from === 'organizations') { // from "Organizations" link
+      this.organizationsSubscription = this.organizationService.searchOrganizations(
+        this.filterForm.value.keyword, null, this.filterForm.value.hasProjects, 'A', categoriesParam, page, 10)
+        .subscribe( res => {
+          this.organizations = res.data;
+          this.totalItems = res.totalItems;
+          this.organizationsCache = this.organizations.slice(0);
+          res.data.forEach((o: Organization) => {
+            this.projectService.getProjectByOrg(o.id, 'A')
+              .subscribe( response => {
+                  this.projects = JSON.parse(JSON.parse(JSON.stringify(response))._body);
+                  o.projects = this.projects.length;
+                       },
+                error => console.log(error));
+          });
+        },
+        error => console.log(error)
+      );
+    } else if (this.from === 'approve') { // from "Approve Organizations" link
+      this.organizationsSubscription = this.organizationService.searchOrganizations(
+      null, null, null, 'P', null, page, 10) // Org of Pending status
+      .subscribe( res => {
+        this.organizations = res;
+        res.forEach((o: Organization) => {
+          this.projectService.getProjectByOrg(o.id, 'A')
+            .subscribe( response => {
+                this.projects = JSON.parse(JSON.parse(JSON.stringify(response))._body);
+                o.projects = this.projects.length;
+                     },
+              error => console.log(error));
+        });
+      },
+        error => console.log(error)
+      );
+    };
   }
 
   // pre delete
@@ -80,7 +148,7 @@ export class OrganizationListComponent implements OnInit, AfterViewInit {
 
   onSelect(organization: Organization): void {
     this.selectedOrganization = organization;
-    // this.router.navigate(['/nonprofit/view', organization.id]);
+    // this.router.navigate(['/organization/view', organization.id]);
   }
 
   // delete callback
@@ -100,7 +168,6 @@ export class OrganizationListComponent implements OnInit, AfterViewInit {
   // edit callback, TODO
   edit(organization: Organization): void {
     this.selectedOrganization = organization;
-    this.router.navigate(['/nonprofit/edit', organization.id]);
+    this.router.navigate(['/organization/edit', organization.id]);
   }
-
 }

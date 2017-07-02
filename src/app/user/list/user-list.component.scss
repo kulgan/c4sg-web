@@ -1,2 +1,5 @@
-@import "../../variables";
+@import "../../_style/app.theme";
 
+.card-avatar, .card-avatar-content {
+  border-radius: 50% !important;
+}
